@@ -1,0 +1,106 @@
+#!/bin/sh
+
+### BEGIN INIT INFO
+# Provides:          ftbmanage
+# Required-Start:    $local_fs $remote_fs screen-cleanup
+# Required-Stop:     $local_fs $remote_fs
+# Should-Start:      $network
+# Should-Stop:       $network
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Feed the Beast server management utility
+# Description:       Manage service provided by the FTB server.
+### END INIT INFO
+
+# Settings
+SERVICE='FTBServer-1.6.4-965.jar'
+OPTIONS='nogui'
+USERNAME='feedthebeast'
+FTBPATH='/var/feedthebeast'
+SCREENNAME='ftbserver'
+MAXHEAP=2048
+MINHEAP=1024
+INVOCATION="java -Xms${MINHEAP}m -Xmx${MAXHEAP}m -XX:PermSize=256m -jar $SERVICE $OPTIONS"
+
+# Utility functions
+as_user() {
+  sudo -u $USERNAME -H sh -c "$1"
+}
+
+# Command functions
+ftb_start() {
+  if pgrep -u $USERNAME -f $SERVICE > /dev/null; then
+    echo "$SERVICE is already running!"
+  else
+    echo "Starting $SERVICE..."
+    as_user "cd $FTBPATH && screen -dmS ftbserver $INVOCATION"
+    sleep 7
+    if pgrep -u $USERNAME -f $SERVICE > /dev/null; then
+      echo "$SERVICE is now running."
+    else
+      echo "Error! Could not start $SERVICE!"
+    fi
+  fi
+}
+
+ftb_stop() {
+  if pgrep -u $USERNAME -f $SERVICE > /dev/null; then
+    echo "Stopping $SERVICE..."
+    as_user "screen -p 0 -S $SCREENNAME -X stuff \"say SERVER SHUTTING DOWN IN 10 SECONDS. Saving map...$(printf \\r)\""
+    as_user "screen -p 0 -S $SCREENNAME -X stuff \"save-all$(printf \\r)\""
+    sleep 10
+    as_user "screen -p 0 -S $SCREENNAME -X stuff \"stop$(printf \\r)\""
+    sleep 7
+
+    if pgrep -u $USERNAME -f $SERVICE > /dev/null; then
+      echo "Error! $SERVICE could not be stopped."
+    else
+      echo "$SERVICE is stopped."
+    fi
+  else
+    echo "$SERVICE is not running."
+  fi
+}
+
+ftb_command() {
+  command="$1";
+  if pgrep -u $USERNAME -f $SERVICE > /dev/null; then
+    echo "$SERVICE is running, executing command..."
+    as_user "screen -p 0 -S $SCREENNAME -X stuff \"$command$(printf \\r)\""
+  fi
+}
+
+# Command handling
+case "$1" in
+  start)
+    ftb_start
+    ;;
+  stop)
+    ftb_stop
+    ;;
+  status)
+    if pgrep -u $USERNAME -f $SERVICE > /dev/null; then
+      if [ $(sudo kill -0 $(pgrep -u $USERNAME -f $SERVICE) &> /dev/null; echo $?) -eq 0 ]; then
+        echo "Server is running and reacts."
+      else
+        echo "Server is running but not reacting."
+      fi
+    else
+      echo "Server is not running."
+    fi
+    ;;
+  command)
+    if [ $# -gt 1 ]; then
+      shift
+      ftb_command "$*"
+    else
+      echo "Must specify server command."
+    fi
+    ;;
+  *)
+    echo "Usage: {start|stop|status|command \"server command\"}"
+    exit 1
+    ;;
+esac
+
+exit 0
