@@ -27,15 +27,23 @@ as_user() {
   sudo -u $USERNAME -H sh -c "$1"
 }
 
+is_running() {
+  return $(pgrep -u $USERNAME -f $SERVICE > /dev/null; echo $?)
+}
+
+send_command() {
+  as_user "screen -p 0 -S $SCREENNAME -X stuff \"$1$(printf \\r)\""
+}
+
 # Command functions
 ftb_start() {
-  if pgrep -u $USERNAME -f $SERVICE > /dev/null; then
+  if is_running; then
     echo "$SERVICE is already running!"
   else
     echo "Starting $SERVICE..."
     as_user "cd $FTBPATH && screen -dmS ftbserver $INVOCATION"
     sleep 7
-    if pgrep -u $USERNAME -f $SERVICE > /dev/null; then
+    if is_running; then
       echo "$SERVICE is now running."
     else
       echo "Error! Could not start $SERVICE!"
@@ -44,15 +52,15 @@ ftb_start() {
 }
 
 ftb_stop() {
-  if pgrep -u $USERNAME -f $SERVICE > /dev/null; then
+  if is_running; then
     echo "Stopping $SERVICE..."
-    as_user "screen -p 0 -S $SCREENNAME -X stuff \"say SERVER SHUTTING DOWN IN 10 SECONDS. Saving map...$(printf \\r)\""
-    as_user "screen -p 0 -S $SCREENNAME -X stuff \"save-all$(printf \\r)\""
+    send_command 'say SERVER SHUTTING DOWN IN 10 SECONDS. Saving map...'
+    send_command 'save-all'
     sleep 10
-    as_user "screen -p 0 -S $SCREENNAME -X stuff \"stop$(printf \\r)\""
+    send_command 'stop'
     sleep 7
 
-    if pgrep -u $USERNAME -f $SERVICE > /dev/null; then
+    if is_running; then
       echo "Error! $SERVICE could not be stopped."
     else
       echo "$SERVICE is stopped."
@@ -63,10 +71,11 @@ ftb_stop() {
 }
 
 ftb_command() {
-  command="$1";
-  if pgrep -u $USERNAME -f $SERVICE > /dev/null; then
+  if is_running; then
     echo "$SERVICE is running, executing command..."
-    as_user "screen -p 0 -S $SCREENNAME -X stuff \"$command$(printf \\r)\""
+    send_command "$1"
+  else
+    echo "$SERVICE is not running."
   fi
 }
 
@@ -79,7 +88,7 @@ case "$1" in
     ftb_stop
     ;;
   status)
-    if pgrep -u $USERNAME -f $SERVICE > /dev/null; then
+    if is_running; then
       if [ $(sudo kill -0 $(pgrep -u $USERNAME -f $SERVICE) &> /dev/null; echo $?) -eq 0 ]; then
         echo "Server is running and reacts."
       else
